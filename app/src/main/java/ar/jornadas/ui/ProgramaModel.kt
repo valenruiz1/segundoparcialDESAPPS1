@@ -20,22 +20,47 @@ class ProgramaModel(app: Application, private val savedStateHandle: SavedStateHa
     fun cambiarTema(valor: String) { savedStateHandle["tema"] = valor }
     val aviso = MutableStateFlow("")
     val cargando = MutableStateFlow(false)
+    private var actualizacionPendiente = false
+
+    fun iniciarCargaAutomatica() {
+        val corresponde = synchronized(bloqueo) {
+            if (cargaAutomaticaIniciada) false
+            else {
+                cargaAutomaticaIniciada = true
+                true
+            }
+        }
+        if (corresponde) iniciarDescarga()
+    }
 
     fun recargar() {
+        if (cargando.value) {
+            actualizacionPendiente = true
+            return
+        }
+        iniciarDescarga()
+    }
+
+    private fun iniciarDescarga() {
+        cargando.value = true
         viewModelScope.launch {
-            cargando.value = true
-            aviso.value = ""
             try {
-                repo.sincronizar()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val hayCopiaLocal = repo.descargaExitosa.first()
-                aviso.value = if (hayCopiaLocal) {
-                    "No se pudo actualizar el programa. Se están usando los datos guardados."
-                } else {
-                    "No se pudo consultar el programa. Comprobá la conexión e intentá nuevamente."
-                }
+                do {
+                    actualizacionPendiente = false
+                    aviso.value = ""
+                    try {
+                        repo.sincronizar()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        val hayCopiaLocal = repo.descargaExitosa.first()
+                        aviso.value = if (hayCopiaLocal) {
+                            "No se pudo actualizar el programa. Se están usando los datos guardados."
+                        } else {
+                            "No se pudo consultar el programa. Comprobá la conexión e intentá nuevamente."
+                        }
+                    }
+                } while (actualizacionPendiente)
             } finally {
                 cargando.value = false
             }
@@ -43,4 +68,9 @@ class ProgramaModel(app: Application, private val savedStateHandle: SavedStateHa
     }
 
     fun marcar(id: String) { viewModelScope.launch { repo.cambiarFavorita(id) } }
+
+    companion object {
+        private val bloqueo = Any()
+        private var cargaAutomaticaIniciada = false
+    }
 }

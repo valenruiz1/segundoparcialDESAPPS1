@@ -9,7 +9,7 @@ import java.io.IOException
 
 class ServicioLocal(private val app: Context) : Interceptor {
     private val config = app.getSharedPreferences("mesa", Context.MODE_PRIVATE)
-    val llamadas = MutableStateFlow(0)
+    val llamadas = contadorPeticiones
     var revision: Int
         get() = config.getInt("revision", 1)
         set(value) { config.edit().putInt("revision", value).apply() }
@@ -22,7 +22,7 @@ class ServicioLocal(private val app: Context) : Interceptor {
         set(value) { config.edit().putBoolean("demoraLarga", value).apply() }
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        synchronized(this) { llamadas.value += 1 }
+        synchronized(contadorPeticiones) { contadorPeticiones.value += 1 }
         val online = disponible
         val version = revision
         Thread.sleep(if (demoraLarga) 8000L else 1400L)
@@ -30,5 +30,9 @@ class ServicioLocal(private val app: Context) : Interceptor {
         val json = app.assets.open("programa-$version.json").bufferedReader().use { it.readText() }
         return Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
             .code(200).message("OK").body(json.toResponseBody("application/json".toMediaType())).build()
+    }
+
+    companion object {
+        private val contadorPeticiones = MutableStateFlow(0)
     }
 }
