@@ -29,6 +29,9 @@ interface CarteleraDao {
     @Query("SELECT * FROM charlas ORDER BY dia, hora, sala")
     fun observar(): Flow<List<Charla>>
 
+    @Query("SELECT * FROM charlas")
+    suspend fun obtenerTodas(): List<Charla>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardar(fichas: List<Charla>)
 
@@ -43,8 +46,12 @@ interface CarteleraDao {
 
     @Transaction
     suspend fun reemplazarInstantanea(fichas: List<Charla>) {
+        val favoritas = obtenerTodas().associate { it.id to it.favorita }
+        val actualizadas = fichas.map { ficha ->
+            ficha.copy(favorita = favoritas[ficha.id] ?: false)
+        }
         borrarTodas()
-        if (fichas.isNotEmpty()) guardar(fichas)
+        if (actualizadas.isNotEmpty()) guardar(actualizadas)
         guardarEstado(EstadoPrograma())
     }
 
